@@ -11,7 +11,13 @@
     {
       "name": "editor",
       "title": "JWT Editor",
-      "description": "A JWT editor for Raycast",
+      "description": "A JWT editor",
+      "mode": "view"
+    },
+    {
+      "name": "quick_link",
+      "title": "Quick Link",
+      "description": "Create quick link",
       "mode": "view"
     }
   ],
@@ -38,10 +44,10 @@
   "preferences": [
     {
       "name": "public_key",
-      "description": "public key",
+      "description": "Public Key",
       "type": "textfield",
-      "title": "public key",
-      "placeholder": "enter your public key",
+      "title": "Public Key",
+      "placeholder": "Enter your Public Key",
       "required": false
     }
   ],

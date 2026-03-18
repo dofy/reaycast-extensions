@@ -1,55 +1,221 @@
-import { Action, ActionPanel, Form, showToast, Toast } from "@raycast/api";
 import { useState } from "react";
+import {
+  Action,
+  ActionPanel,
+  Clipboard,
+  Color,
+  Detail,
+  Form,
+  Icon,
+  LaunchProps,
+  showToast,
+  Toast,
+  useNavigation,
+} from "@raycast/api";
 
-function JWTEditor() {
-  const [jwtToken, setJwtToken] = useState("");
-  const [publicKey, setPublicKey] = useState("");
+interface JWTHeader {
+  alg: string;
+  typ?: string;
+  kid?: string;
+  [key: string]: unknown;
+}
 
-  const handleSubmit = async (values: { jwt: string; publicKey: string }) => {
+interface JWTPayload {
+  sub?: string;
+  iss?: string;
+  aud?: string | string[];
+  exp?: number;
+  iat?: number;
+  nbf?: number;
+  jti?: string;
+  [key: string]: unknown;
+}
+
+interface DecodedJWT {
+  header: JWTHeader;
+  payload: JWTPayload;
+  signature: string;
+}
+
+function base64UrlDecode(str: string): string {
+  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  return Buffer.from(padded, "base64").toString("utf-8");
+}
+
+function decodeJWT(token: string): DecodedJWT {
+  const parts = token.trim().split(".");
+  if (parts.length !== 3) {
+    throw new Error(`Invalid JWT: expected 3 parts separated by dots, got ${parts.length}`);
+  }
+
+  let header: JWTHeader;
+  let payload: JWTPayload;
+
+  try {
+    header = JSON.parse(base64UrlDecode(parts[0]));
+  } catch {
+    throw new Error("Invalid JWT: cannot decode header");
+  }
+
+  try {
+    payload = JSON.parse(base64UrlDecode(parts[1]));
+  } catch {
+    throw new Error("Invalid JWT: cannot decode payload");
+  }
+
+  return { header, payload, signature: parts[2] };
+}
+
+function formatDate(timestamp: number): string {
+  return new Date(timestamp * 1000).toLocaleString();
+}
+
+function getExpiry(exp?: number): { text: string; color: Color } {
+  if (exp === undefined) return { text: "No expiry", color: Color.SecondaryText };
+  const expired = Date.now() / 1000 > exp;
+  return {
+    text: expired ? `Expired — ${formatDate(exp)}` : `Valid until ${formatDate(exp)}`,
+    color: expired ? Color.Red : Color.Green,
+  };
+}
+
+function JWTDetail({ decoded, token }: { decoded: DecodedJWT; token: string }) {
+  const expiry = getExpiry(decoded.payload.exp);
+
+  const markdown = `
+## Header
+\`\`\`json
+${JSON.stringify(decoded.header, null, 2)}
+\`\`\`
+
+## Payload
+\`\`\`json
+${JSON.stringify(decoded.payload, null, 2)}
+\`\`\`
+
+## Signature
+\`\`\`
+${decoded.signature}
+\`\`\`
+`;
+
+  return (
+    <Detail
+      navigationTitle="JWT Decoded"
+      markdown={markdown}
+      actions={
+        <ActionPanel>
+          <ActionPanel.Section title="Copy">
+            <Action
+              title="Copy Payload"
+              icon={Icon.Clipboard}
+              onAction={async () => {
+                await Clipboard.copy(JSON.stringify(decoded.payload, null, 2));
+                await showToast({ style: Toast.Style.Success, title: "Payload copied" });
+              }}
+            />
+            <Action
+              title="Copy Header"
+              icon={Icon.Clipboard}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "h" }}
+              onAction={async () => {
+                await Clipboard.copy(JSON.stringify(decoded.header, null, 2));
+                await showToast({ style: Toast.Style.Success, title: "Header copied" });
+              }}
+            />
+            <Action
+              title="Copy Token"
+              icon={Icon.Clipboard}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "t" }}
+              onAction={async () => {
+                await Clipboard.copy(token);
+                await showToast({ style: Toast.Style.Success, title: "Token copied" });
+              }}
+            />
+          </ActionPanel.Section>
+        </ActionPanel>
+      }
+      metadata={
+        <Detail.Metadata>
+          <Detail.Metadata.Label title="Algorithm" text={decoded.header.alg} />
+          {decoded.header.typ && <Detail.Metadata.Label title="Type" text={decoded.header.typ} />}
+          {decoded.header.kid && <Detail.Metadata.Label title="Key ID" text={decoded.header.kid} />}
+          <Detail.Metadata.Separator />
+          {decoded.payload.sub !== undefined && (
+            <Detail.Metadata.Label title="Subject" text={String(decoded.payload.sub)} />
+          )}
+          {decoded.payload.iss && <Detail.Metadata.Label title="Issuer" text={String(decoded.payload.iss)} />}
+          {decoded.payload.aud && (
+            <Detail.Metadata.Label
+              title="Audience"
+              text={Array.isArray(decoded.payload.aud) ? decoded.payload.aud.join(", ") : String(decoded.payload.aud)}
+            />
+          )}
+          {decoded.payload.jti && <Detail.Metadata.Label title="JWT ID" text={decoded.payload.jti} />}
+          <Detail.Metadata.Separator />
+          {decoded.payload.iat && <Detail.Metadata.Label title="Issued At" text={formatDate(decoded.payload.iat)} />}
+          {decoded.payload.nbf && <Detail.Metadata.Label title="Not Before" text={formatDate(decoded.payload.nbf)} />}
+          <Detail.Metadata.Label title="Expiry" text={{ value: expiry.text, color: expiry.color }} />
+        </Detail.Metadata>
+      }
+    />
+  );
+}
+
+function JWTForm({ initialJWT = "" }: { initialJWT?: string }) {
+  const { push } = useNavigation();
+  const [jwt, setJWT] = useState(initialJWT);
+  const [error, setError] = useState<string | undefined>();
+
+  const decode = (token: string) => {
     try {
-      // 这里处理 JWT 编码/解码逻辑
-      console.log("JWT:", values.jwt);
-      console.log("Public Key:", values.publicKey);
-
-      await showToast({
-        style: Toast.Style.Success,
-        title: "JWT 处理成功",
-      });
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "处理失败",
-        message: String(error),
-      });
+      const decoded = decodeJWT(token);
+      setError(undefined);
+      push(<JWTDetail decoded={decoded} token={token.trim()} />);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Cannot decode token";
+      setError(message);
+      showToast({ style: Toast.Style.Failure, title: "Invalid JWT", message });
     }
   };
 
   return (
     <Form
+      navigationTitle="JWT Editor"
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Process Jwt" onSubmit={handleSubmit} />
+          <Action.SubmitForm title="Decode" icon={Icon.Eye} onSubmit={({ jwt: token }) => decode(token)} />
+          <Action
+            title="Paste from Clipboard"
+            icon={Icon.Clipboard}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+            onAction={async () => {
+              const text = await Clipboard.readText();
+              if (text) {
+                setJWT(text.trim());
+                setError(undefined);
+              }
+            }}
+          />
         </ActionPanel>
       }
     >
       <Form.TextArea
         id="jwt"
         title="JWT Token"
-        placeholder="输入您的 JWT token..."
-        value={jwtToken}
-        onChange={setJwtToken}
-      />
-      <Form.TextArea
-        id="publicKey"
-        title="Public Key"
-        placeholder="输入您的 public key..."
-        value={publicKey}
-        onChange={setPublicKey}
+        placeholder="Paste your JWT token here..."
+        value={jwt}
+        onChange={(val) => {
+          setJWT(val);
+          setError(undefined);
+        }}
+        error={error}
       />
     </Form>
   );
 }
 
-export default function Command() {
-  return <JWTEditor />;
+export default function Command(props: LaunchProps<{ launchContext?: { jwt?: string } }>) {
+  return <JWTForm initialJWT={props.launchContext?.jwt ?? ""} />;
 }
