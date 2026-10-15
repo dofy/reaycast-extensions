@@ -1,0 +1,164 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "linguadock",
+  "title": "LinguaDock",
+  "description": "Translate selected or entered text with an OpenAI-compatible API",
+  "icon": "extension-icon.png",
+  "author": "dofy",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "translate",
+      "title": "Translate Text",
+      "description": "Translate selected or entered text",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "apiBaseUrl",
+      "title": "API Base URL",
+      "description": "OpenAI-compatible version root or full chat completions URL",
+      "type": "textfield",
+      "default": "https://kaon-router.kaonai.com/v1",
+      "placeholder": "https://api.openai.com/v1",
+      "required": true
+    },
+    {
+      "name": "apiKey",
+      "title": "API Key",
+      "description": "API key for the configured OpenAI-compatible service",
+      "type": "password",
+      "placeholder": "sk-…",
+      "required": true
+    },
+    {
+      "name": "model",
+      "title": "Model",
+      "description": "Model identifier sent to the API",
+      "type": "textfield",
+      "default": "kaon/claude-opus-5",
+      "placeholder": "gpt-5-mini",
+      "required": true
+    },
+    {
+      "name": "defaultTargetLanguage",
+      "title": "Default Target Language",
+      "description": "Initial target language in the translation form",
+      "type": "dropdown",
+      "default": "auto",
+      "required": true,
+      "data": [
+        {
+          "title": "自动（中文 ⇄ 英文）",
+          "value": "auto"
+        },
+        {
+          "title": "简体中文",
+          "value": "zh-Hans"
+        },
+        {
+          "title": "繁體中文",
+          "value": "zh-Hant"
+        },
+        {
+          "title": "English",
+          "value": "en"
+        },
+        {
+          "title": "日本語",
+          "value": "ja"
+        },
+        {
+          "title": "한국어",
+          "value": "ko"
+        },
+        {
+          "title": "Español",
+          "value": "es"
+        },
+        {
+          "title": "Français",
+          "value": "fr"
+        },
+        {
+          "title": "Deutsch",
+          "value": "de"
+        },
+        {
+          "title": "Português",
+          "value": "pt"
+        },
+        {
+          "title": "Italiano",
+          "value": "it"
+        },
+        {
+          "title": "Русский",
+          "value": "ru"
+        },
+        {
+          "title": "العربية",
+          "value": "ar"
+        },
+        {
+          "title": "हिन्दी",
+          "value": "hi"
+        },
+        {
+          "title": "ไทย",
+          "value": "th"
+        },
+        {
+          "title": "Tiếng Việt",
+          "value": "vi"
+        },
+        {
+          "title": "Bahasa Indonesia",
+          "value": "id"
+        },
+        {
+          "title": "Bahasa Melayu",
+          "value": "ms"
+        },
+        {
+          "title": "Türkçe",
+          "value": "tr"
+        },
+        {
+          "title": "Nederlands",
+          "value": "nl"
+        },
+        {
+          "title": "Polski",
+          "value": "pl"
+        },
+        {
+          "title": "Українська",
+          "value": "uk"
+        }
+      ]
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.102.4"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^2.0.4",
+    "@types/node": "22.19.17",
+    "@types/react": "19.0.10",
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "prepublishOnly": "echo \"Use pnpm publish:extension to publish this Raycast extension.\" && exit 1",
+    "publish:extension": "npx @raycast/api@latest publish",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
+}
