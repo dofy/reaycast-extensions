@@ -6,10 +6,10 @@
 ## 安装和配置
 
 独立扩展，核心逻辑位于 `src/core.ts`，不依赖 PopClip 仓库。
-需要 Node.js 22.18+ 或 24+、pnpm 和 macOS Raycast。
+需要 Node.js 22.22.2+ 或 24 LTS、pnpm 和 macOS Raycast。
 
 ```sh
-cd /Users/seven/Documents/raycast-extensions/emoji-append
+cd emoji-append
 pnpm install --frozen-lockfile
 pnpm dev
 ```
@@ -39,7 +39,7 @@ pnpm dev
 仅支持 Bearer Key + Chat Completions，不直接支持 Anthropic Messages、Responses API 或 Azure api-key 鉴权。
 最多处理 12,000 个 UTF-16 字符，请求超时 30 秒；HTTP 错误提示不显示响应正文或密钥。
 
-## 验证
+## 开发检查
 
 ```sh
 pnpm test
