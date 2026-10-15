@@ -106,7 +106,11 @@ export interface LogEntry {
   count: number;
 }
 
-export function parseLogEntries(content: string, limit = 80): LogEntry[] {
+export function parseLogEntries(
+  content: string,
+  limit = 80,
+  groupRepeated = true,
+): LogEntry[] {
   const records: LogEntry[] = [];
   for (const raw of content.split("\n").filter((line) => line.trim())) {
     const line = normalizeLogLine(raw);
@@ -176,6 +180,7 @@ export function parseLogEntries(content: string, limit = 80): LogEntry[] {
     });
   }
   const entries: LogEntry[] = [];
+  if (!groupRepeated) return records.slice(-limit).reverse();
   const groups = new Map<string, LogEntry>();
   for (const entry of records.slice(-limit).reverse()) {
     const summary = entry.message.startsWith(
@@ -212,6 +217,7 @@ type LogLocations = {
   home?: string;
   stateDirectory?: string;
   dailyDirectories?: string[];
+  includeServiceLog?: boolean;
 };
 
 export function logErrorMessage(error: unknown): string {
@@ -249,7 +255,9 @@ export async function resolveLogPath(
     }
   }
   const candidates = [
-    join(home, "Library/Logs/openclaw/gateway.log"),
+    ...(locations.includeServiceLog === false
+      ? []
+      : [join(home, "Library/Logs/openclaw/gateway.log")]),
     join(state, "logs/gateway.log"),
   ];
   const dailyDirectories = locations.dailyDirectories ?? [

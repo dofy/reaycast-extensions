@@ -1,5 +1,5 @@
-import { runExecutable } from "./runtime";
 import {
+  openExtensionPreferences,
   ActionPanel,
   Action,
   List,
@@ -9,7 +9,8 @@ import {
   Toast,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
-import { getBin, getEnv, runCli } from "./utils";
+import { getSettings, runCli } from "./utils";
+import type { OpenClawSettings } from "./settings";
 import { parseSessions } from "./data";
 
 function formatAge(ms: number | null): string {
@@ -37,22 +38,21 @@ function tokenColor(pct: number | null): Color {
 }
 
 export default function SessionsCommand() {
-  const bin = getBin();
+  const settingsKey = JSON.stringify(getSettings());
   const {
     data: sessions = [],
     isLoading,
     revalidate,
     error,
   } = usePromise(
-    async (binary: string) =>
+    async (serialized: string) =>
       parseSessions(
-        await runExecutable(
-          binary,
+        await runCli(
           ["sessions", "--json", "--no-color"],
-          getEnv(binary),
+          JSON.parse(serialized) as OpenClawSettings,
         ),
       ),
-    [bin],
+    [settingsKey],
   );
 
   async function handleCleanup() {
@@ -89,6 +89,11 @@ export default function SessionsCommand() {
         icon={Icon.Trash}
         onAction={handleCleanup}
         shortcut={{ modifiers: ["cmd", "shift"], key: "d" }}
+      />
+      <Action
+        title="Extension Preferences"
+        icon={Icon.Gear}
+        onAction={openExtensionPreferences}
       />
     </ActionPanel>
   );

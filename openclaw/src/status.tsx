@@ -1,5 +1,5 @@
-import { runExecutable } from "./runtime";
 import {
+  openExtensionPreferences,
   ActionPanel,
   Action,
   Detail,
@@ -9,18 +9,18 @@ import {
   Color,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
-import { getBin, getEnv, runCli } from "./utils";
+import { getSettings, runCli } from "./utils";
+import type { OpenClawSettings } from "./settings";
 import { parseHealth, formatHealth } from "./data";
 
 export default function StatusCommand() {
-  const bin = getBin();
+  const settingsKey = JSON.stringify(getSettings());
   const { data, isLoading, revalidate, error } = usePromise(
-    async (binary: string) => {
+    async (serialized: string) => {
       const health = parseHealth(
-        await runExecutable(
-          binary,
+        await runCli(
           ["health", "--json", "--no-color"],
-          getEnv(binary),
+          JSON.parse(serialized) as OpenClawSettings,
         ),
       );
       return {
@@ -29,7 +29,7 @@ export default function StatusCommand() {
         checkedAt: new Date().toLocaleTimeString(undefined, { hour12: false }),
       };
     },
-    [bin],
+    [settingsKey],
   );
 
   async function handleRestart() {
@@ -124,6 +124,11 @@ export default function StatusCommand() {
             icon={Icon.Repeat}
             onAction={handleRestart}
             shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
+          />
+          <Action
+            title="Extension Preferences"
+            icon={Icon.Gear}
+            onAction={openExtensionPreferences}
           />
         </ActionPanel>
       }

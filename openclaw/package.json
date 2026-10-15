@@ -36,17 +36,126 @@
     {
       "name": "binPath",
       "title": "OpenClaw Binary Path",
-      "description": "Leave empty to discover openclaw on this Mac, or enter an executable path",
+      "description": "Use auto to discover openclaw, or enter an absolute executable path.",
       "type": "textfield",
       "placeholder": "Automatic (or full path to openclaw)",
-      "required": false
+      "required": false,
+      "default": "auto"
     },
     {
       "name": "logPath",
       "title": "Log File Path",
-      "description": "Optional log file override. Leave empty to discover macOS, legacy or daily diagnostic logs.",
+      "description": "Use auto to discover logs, or enter an absolute log file path. ~/ is supported.",
       "type": "textfield",
       "placeholder": "Automatic (or full path to a log file)",
+      "required": false,
+      "default": "auto"
+    },
+    {
+      "name": "stateDirectory",
+      "title": "State Directory",
+      "description": "auto inherits OpenClaw environment and defaults. Set a path to use a specific local instance.",
+      "type": "textfield",
+      "default": "auto",
+      "required": false
+    },
+    {
+      "name": "configPath",
+      "title": "Config File Path",
+      "description": "auto inherits the OpenClaw configuration. A custom path affects CLI commands only.",
+      "type": "textfield",
+      "default": "auto",
+      "required": false
+    },
+    {
+      "name": "additionalPath",
+      "title": "Additional Executable Paths",
+      "description": "Extra directories for CLI or Node discovery, separated by colons. ~/ is supported.",
+      "type": "textfield",
+      "default": "",
+      "required": false
+    },
+    {
+      "name": "dailyLogDirectory",
+      "title": "Diagnostic Log Directory",
+      "description": "Directory containing openclaw-YYYY-MM-DD.log files. The latest dated file is used as a fallback.",
+      "type": "textfield",
+      "default": "/tmp/openclaw",
+      "required": false
+    },
+    {
+      "name": "commandTimeoutSeconds",
+      "title": "Command Timeout (Seconds)",
+      "description": "Applies to status, sessions, restart and cleanup. Range: 1–300.",
+      "type": "textfield",
+      "default": "20",
+      "required": false
+    },
+    {
+      "name": "commandOutputMiB",
+      "title": "CLI Output Limit (MiB)",
+      "description": "Maximum captured CLI response size. Range: 1–16.",
+      "type": "textfield",
+      "default": "2",
+      "required": false
+    },
+    {
+      "name": "logEntryLimit",
+      "title": "Log Entry Limit",
+      "description": "Maximum recent records before grouping. Range: 1–1000.",
+      "type": "textfield",
+      "default": "80",
+      "required": false
+    },
+    {
+      "name": "logReadKiB",
+      "title": "Log Read Window (KiB)",
+      "description": "Maximum file tail size to read. Range: 16–4096.",
+      "type": "textfield",
+      "default": "256",
+      "required": false
+    },
+    {
+      "name": "defaultLogLevel",
+      "title": "Default Log Level",
+      "description": "Initial log filter when opening Logs.",
+      "type": "dropdown",
+      "default": "all",
+      "required": false,
+      "data": [
+        {
+          "title": "All Levels",
+          "value": "all"
+        },
+        {
+          "title": "Warnings & Errors",
+          "value": "problems"
+        },
+        {
+          "title": "Errors",
+          "value": "error"
+        },
+        {
+          "title": "Warnings",
+          "value": "warn"
+        },
+        {
+          "title": "Info",
+          "value": "info"
+        },
+        {
+          "title": "Debug",
+          "value": "debug"
+        }
+      ]
+    },
+    {
+      "name": "groupRepeatedLogs",
+      "title": "Group Repeated Logs",
+      "description": "Combine repeated records while preserving every raw entry in details.",
+      "type": "checkbox",
+      "label": "Group repeated messages",
+      "default": true,
       "required": false
     }
   ],

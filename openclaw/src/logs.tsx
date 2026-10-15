@@ -5,10 +5,13 @@ import {
   List,
   Icon,
   Color,
-  getPreferenceValues,
   openExtensionPreferences,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { getSettings } from "./utils";
+import type { OpenClawSettings } from "./settings";
 import {
   readLogContent,
   parseLogEntries,
@@ -27,18 +30,40 @@ const styles: Record<LogLevel, { icon: Icon; color: Color; label: string }> = {
 };
 
 export default function LogsCommand() {
-  const { logPath = "" } = getPreferenceValues<{ logPath?: string }>();
-  const [level, setLevel] = useState("all");
+  const settings = getSettings();
+  const settingsKey = JSON.stringify(settings);
+  const [level, setLevel] = useState(settings.defaultLogLevel);
   const { data, error, isLoading, revalidate } = usePromise(
-    async (configured: string) => {
-      const path = await resolveLogPath(configured);
+    async (serialized: string) => {
+      const config = JSON.parse(serialized) as OpenClawSettings;
+      const dailyDirectories =
+        config.isolatedLogs && config.dailyLogDirectory === "/tmp/openclaw"
+          ? []
+          : [
+              ...new Set([
+                config.dailyLogDirectory,
+                ...(!config.isolatedLogs ? [join(tmpdir(), "openclaw")] : []),
+              ]),
+            ];
+      const path = await resolveLogPath(config.logPath, {
+        stateDirectory: config.stateDirectory,
+        dailyDirectories,
+        includeServiceLog: !config.isolatedLogs,
+      });
       try {
-        return { path, entries: parseLogEntries(await readLogContent(path)) };
+        return {
+          path,
+          entries: parseLogEntries(
+            await readLogContent(path, config.logReadBytes),
+            config.logEntryLimit,
+            config.groupRepeatedLogs,
+          ),
+        };
       } catch (error) {
         throw new Error(logErrorMessage(error));
       }
     },
-    [logPath],
+    [settingsKey],
   );
   const entries = (data?.entries ?? []).filter(
     (entry) =>
@@ -56,7 +81,7 @@ export default function LogsCommand() {
         shortcut={{ modifiers: ["cmd"], key: "r" }}
       />
       <Action
-        title="Configure Log Path"
+        title="Extension Preferences"
         icon={Icon.Gear}
         onAction={openExtensionPreferences}
       />

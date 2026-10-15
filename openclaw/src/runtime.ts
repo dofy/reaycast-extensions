@@ -80,19 +80,22 @@ export function runExecutable(
   args: string[],
   env: NodeJS.ProcessEnv,
   timeout = 20000,
+  maxBuffer = 2 * 1024 * 1024,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       binary,
       args,
-      { encoding: "utf8", env, timeout, maxBuffer: 2 * 1024 * 1024 },
+      { encoding: "utf8", env, timeout, maxBuffer },
       (error, stdout) => {
         if (error) {
           reject(
             new Error(
-              error.killed
-                ? "OpenClaw command timed out. Try again or check the Gateway."
-                : "OpenClaw command failed. Check the executable, Gateway and local configuration.",
+              error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+                ? "OpenClaw output exceeded CLI Output Limit. Increase it in extension preferences."
+                : error.killed
+                  ? "OpenClaw command timed out. Try again or check the Gateway."
+                  : "OpenClaw command failed. Check the executable, Gateway and local configuration.",
             ),
           );
         } else resolve(stdout);
