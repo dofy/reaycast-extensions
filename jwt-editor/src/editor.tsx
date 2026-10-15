@@ -13,59 +13,8 @@ import {
   useNavigation,
 } from "@raycast/api";
 
-interface JWTHeader {
-  alg: string;
-  typ?: string;
-  kid?: string;
-  [key: string]: unknown;
-}
-
-interface JWTPayload {
-  sub?: string;
-  iss?: string;
-  aud?: string | string[];
-  exp?: number;
-  iat?: number;
-  nbf?: number;
-  jti?: string;
-  [key: string]: unknown;
-}
-
-interface DecodedJWT {
-  header: JWTHeader;
-  payload: JWTPayload;
-  signature: string;
-}
-
-function base64UrlDecode(str: string): string {
-  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  return Buffer.from(padded, "base64").toString("utf-8");
-}
-
-function decodeJWT(token: string): DecodedJWT {
-  const parts = token.trim().split(".");
-  if (parts.length !== 3) {
-    throw new Error(`Invalid JWT: expected 3 parts separated by dots, got ${parts.length}`);
-  }
-
-  let header: JWTHeader;
-  let payload: JWTPayload;
-
-  try {
-    header = JSON.parse(base64UrlDecode(parts[0]));
-  } catch {
-    throw new Error("Invalid JWT: cannot decode header");
-  }
-
-  try {
-    payload = JSON.parse(base64UrlDecode(parts[1]));
-  } catch {
-    throw new Error("Invalid JWT: cannot decode payload");
-  }
-
-  return { header, payload, signature: parts[2] };
-}
+import { decodeJWT } from "./jwt";
+import type { DecodedJWT } from "./jwt";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString();
@@ -73,9 +22,9 @@ function formatDate(timestamp: number): string {
 
 function getExpiry(exp?: number): { text: string; color: Color } {
   if (exp === undefined) return { text: "No expiry", color: Color.SecondaryText };
-  const expired = Date.now() / 1000 > exp;
+  const expired = Date.now() / 1000 >= exp;
   return {
-    text: expired ? `Expired — ${formatDate(exp)}` : `Valid until ${formatDate(exp)}`,
+    text: expired ? `Expired — ${formatDate(exp)}` : `Unexpired until ${formatDate(exp)} (signature not verified)`,
     color: expired ? Color.Red : Color.Green,
   };
 }
@@ -84,7 +33,7 @@ function JWTDetail({ decoded, token }: { decoded: DecodedJWT; token: string }) {
   const expiry = getExpiry(decoded.payload.exp);
 
   const markdown = `
-## Header
+Signature verification is not performed.\n\n## Header
 \`\`\`json
 ${JSON.stringify(decoded.header, null, 2)}
 \`\`\`
@@ -111,7 +60,7 @@ ${decoded.signature}
               title="Copy Payload"
               icon={Icon.Clipboard}
               onAction={async () => {
-                await Clipboard.copy(JSON.stringify(decoded.payload, null, 2));
+                await Clipboard.copy(JSON.stringify(decoded.payload, null, 2), { concealed: true });
                 await showToast({ style: Toast.Style.Success, title: "Payload copied" });
               }}
             />
@@ -120,7 +69,7 @@ ${decoded.signature}
               icon={Icon.Clipboard}
               shortcut={{ modifiers: ["cmd", "shift"], key: "h" }}
               onAction={async () => {
-                await Clipboard.copy(JSON.stringify(decoded.header, null, 2));
+                await Clipboard.copy(JSON.stringify(decoded.header, null, 2), { concealed: true });
                 await showToast({ style: Toast.Style.Success, title: "Header copied" });
               }}
             />
@@ -129,7 +78,7 @@ ${decoded.signature}
               icon={Icon.Clipboard}
               shortcut={{ modifiers: ["cmd", "shift"], key: "t" }}
               onAction={async () => {
-                await Clipboard.copy(token);
+                await Clipboard.copy(token, { concealed: true });
                 await showToast({ style: Toast.Style.Success, title: "Token copied" });
               }}
             />
@@ -154,8 +103,12 @@ ${decoded.signature}
           )}
           {decoded.payload.jti && <Detail.Metadata.Label title="JWT ID" text={decoded.payload.jti} />}
           <Detail.Metadata.Separator />
-          {decoded.payload.iat && <Detail.Metadata.Label title="Issued At" text={formatDate(decoded.payload.iat)} />}
-          {decoded.payload.nbf && <Detail.Metadata.Label title="Not Before" text={formatDate(decoded.payload.nbf)} />}
+          {decoded.payload.iat !== undefined && (
+            <Detail.Metadata.Label title="Issued At" text={formatDate(decoded.payload.iat)} />
+          )}
+          {decoded.payload.nbf !== undefined && (
+            <Detail.Metadata.Label title="Not Before" text={formatDate(decoded.payload.nbf)} />
+          )}
           <Detail.Metadata.Label title="Expiry" text={{ value: expiry.text, color: expiry.color }} />
         </Detail.Metadata>
       }
