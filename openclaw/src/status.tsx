@@ -1,91 +1,130 @@
-import { ActionPanel, Action, Detail, Icon, showToast, Toast } from "@raycast/api";
-import { useExec } from "@raycast/utils";
-import { spawnSync } from "child_process";
-import { getBin, getEnv } from "./utils";
-
-function parseHealth(raw: string): string {
-  const lines = raw
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  const statusLines: string[] = [];
-  const sessionLines: string[] = [];
-  let inSessions = false;
-
-  for (const line of lines) {
-    if (line.startsWith("- agent:")) {
-      inSessions = true;
-      const match = line.match(/- (agent:[^\s]+) \((.+)\)/);
-      if (match) {
-        sessionLines.push(`| ${formatSessionKey(match[1])} | ${match[2]} |`);
-      }
-    } else if (!inSessions) {
-      statusLines.push(line);
-    }
-  }
-
-  let md = "# OpenClaw Status\n\n";
-  for (const line of statusLines) {
-    const [k, ...rest] = line.split(":");
-    const v = rest.join(":").trim();
-    if (v) {
-      const icon = line.startsWith("Feishu") ? (v === "ok" ? "✅" : "❌") : "•";
-      md += `**${icon} ${k.trim()}:** ${v}\n\n`;
-    }
-  }
-
-  if (sessionLines.length > 0) {
-    md += "\n## Active Sessions\n\n";
-    md += "| Session | Last Active |\n|---|---|\n";
-    md += sessionLines.join("\n") + "\n";
-  }
-
-  return md;
-}
-
-function formatSessionKey(key: string): string {
-  if (key === "agent:main:main") return "Direct (main)";
-  if (key.includes("feishu:direct")) return "Feishu · Direct";
-  if (key.includes("feishu:group")) return "Feishu · Group";
-  return key.replace("agent:main:", "");
-}
+import { runExecutable } from "./runtime";
+import {
+  ActionPanel,
+  Action,
+  Detail,
+  Icon,
+  showToast,
+  Toast,
+  Color,
+} from "@raycast/api";
+import { usePromise } from "@raycast/utils";
+import { getBin, getEnv, runCli } from "./utils";
+import { parseHealth, formatHealth } from "./data";
 
 export default function StatusCommand() {
   const bin = getBin();
-  const env = getEnv();
+  const { data, isLoading, revalidate, error } = usePromise(
+    async (binary: string) => {
+      const health = parseHealth(
+        await runExecutable(
+          binary,
+          ["health", "--json", "--no-color"],
+          getEnv(binary),
+        ),
+      );
+      return {
+        health,
+        markdown: formatHealth(health),
+        checkedAt: new Date().toLocaleTimeString(undefined, { hour12: false }),
+      };
+    },
+    [bin],
+  );
 
-  const { data, isLoading, revalidate, error } = useExec(bin, ["health", "--no-color"], {
-    env,
-    keepPreviousData: true,
-  });
-
-  function handleRestart() {
-    showToast({ style: Toast.Style.Animated, title: "Restarting gateway…" });
-    const result = spawnSync(bin, ["gateway", "restart", "--no-color"], { encoding: "utf8", env });
-    if (result.status === 0) {
-      showToast({ style: Toast.Style.Success, title: "Gateway restarted" });
-      setTimeout(revalidate, 2000);
-    } else {
-      showToast({ style: Toast.Style.Failure, title: "Restart failed", message: result.stderr });
+  async function handleRestart() {
+    await showToast({
+      style: Toast.Style.Animated,
+      title: "正在重启 Gateway…",
+    });
+    try {
+      await runCli(["gateway", "restart", "--no-color"]);
+      await showToast({
+        style: Toast.Style.Success,
+        title: "Gateway 已重启",
+      });
+      await revalidate();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "重启失败",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   }
-
-  const markdown = error
-    ? `# Error\n\n\`\`\`\n${error.message}\n\`\`\``
-    : data
-      ? parseHealth(data)
-      : "Loading…";
 
   return (
     <Detail
       isLoading={isLoading}
-      markdown={markdown}
-      navigationTitle="OpenClaw Status"
+      markdown={
+        error
+          ? `# 暂时无法读取状态\n\n${error.message}\n\n请检查 Gateway 和可执行文件路径，按 ⌘R 重试。`
+          : (data?.markdown ?? "正在检查 Gateway…")
+      }
+      navigationTitle="OpenClaw 状态"
+      metadata={
+        data && !error ? (
+          <Detail.Metadata>
+            <Detail.Metadata.TagList title="Gateway">
+              <Detail.Metadata.TagList.Item
+                text={data.health.ok ? "正常" : "异常"}
+                color={data.health.ok ? Color.Green : Color.Red}
+              />
+            </Detail.Metadata.TagList>
+            <Detail.Metadata.Label
+              title="检查耗时"
+              text={
+                data.health.durationMs === null
+                  ? "未报告"
+                  : `${data.health.durationMs} ms`
+              }
+            />
+            <Detail.Metadata.Label
+              title="会话数量"
+              text={
+                data.health.sessionCount === null
+                  ? "未报告"
+                  : String(data.health.sessionCount)
+              }
+            />
+            <Detail.Metadata.Label title="检查时间" text={data.checkedAt} />
+            <Detail.Metadata.Separator />
+            <Detail.Metadata.TagList title="渠道">
+              {data.health.channels.map((channel) => (
+                <Detail.Metadata.TagList.Item
+                  key={channel.id}
+                  text={`${channel.name} · ${channel.summary}`}
+                  color={
+                    channel.state === "ok"
+                      ? Color.Green
+                      : channel.state === "warning"
+                        ? Color.Orange
+                        : Color.SecondaryText
+                  }
+                />
+              ))}
+            </Detail.Metadata.TagList>
+            <Detail.Metadata.Label
+              title="需关注"
+              text={String(data.health.issues.length)}
+            />
+          </Detail.Metadata>
+        ) : undefined
+      }
       actions={
         <ActionPanel>
-          <Action title="Refresh" icon={Icon.ArrowClockwise} onAction={revalidate} shortcut={{ modifiers: ["cmd"], key: "r" }} />
-          <Action title="Restart Gateway" icon={Icon.Repeat} onAction={handleRestart} shortcut={{ modifiers: ["cmd", "shift"], key: "r" }} />
+          <Action
+            title="Refresh"
+            icon={Icon.ArrowClockwise}
+            onAction={revalidate}
+            shortcut={{ modifiers: ["cmd"], key: "r" }}
+          />
+          <Action
+            title="Restart Gateway"
+            icon={Icon.Repeat}
+            onAction={handleRestart}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
+          />
         </ActionPanel>
       }
     />

@@ -1,22 +1,19 @@
-import { ActionPanel, Action, List, Icon, Color, showToast, Toast } from "@raycast/api";
-import { useExec } from "@raycast/utils";
-import { spawnSync } from "child_process";
-import { getBin, getEnv } from "./utils";
+import { runExecutable } from "./runtime";
+import {
+  ActionPanel,
+  Action,
+  List,
+  Icon,
+  Color,
+  showToast,
+  Toast,
+} from "@raycast/api";
+import { usePromise } from "@raycast/utils";
+import { getBin, getEnv, runCli } from "./utils";
+import { parseSessions } from "./data";
 
-interface Session {
-  key: string;
-  ageMs: number;
-  totalTokens: number;
-  contextTokens: number;
-  model: string;
-  kind: string;
-}
-
-interface SessionsResult {
-  sessions: Session[];
-}
-
-function formatAge(ms: number): string {
+function formatAge(ms: number | null): string {
+  if (ms === null) return "unknown age";
   const m = Math.floor(ms / 60000);
   if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
@@ -32,7 +29,8 @@ function formatSessionLabel(key: string): string {
   return key.replace("agent:main:", "");
 }
 
-function tokenColor(pct: number): Color {
+function tokenColor(pct: number | null): Color {
+  if (pct === null) return Color.SecondaryText;
   if (pct < 50) return Color.Green;
   if (pct < 80) return Color.Orange;
   return Color.Red;
@@ -40,71 +38,108 @@ function tokenColor(pct: number): Color {
 
 export default function SessionsCommand() {
   const bin = getBin();
-  const env = getEnv();
+  const {
+    data: sessions = [],
+    isLoading,
+    revalidate,
+    error,
+  } = usePromise(
+    async (binary: string) =>
+      parseSessions(
+        await runExecutable(
+          binary,
+          ["sessions", "--json", "--no-color"],
+          getEnv(binary),
+        ),
+      ),
+    [bin],
+  );
 
-  const { data, isLoading, revalidate, error } = useExec(bin, ["sessions", "--json", "--no-color"], {
-    env,
-    keepPreviousData: true,
-  });
-
-  function handleCleanup() {
-    showToast({ style: Toast.Style.Animated, title: "Cleaning up sessions…" });
-    const result = spawnSync(bin, ["sessions", "cleanup", "--no-color"], { encoding: "utf8", env });
-    if (result.status === 0) {
-      showToast({ style: Toast.Style.Success, title: "Sessions cleaned up" });
-      revalidate();
-    } else {
-      showToast({ style: Toast.Style.Failure, title: "Cleanup failed", message: result.stderr });
-    }
-  }
-
-  let sessions: Session[] = [];
-  if (data) {
+  async function handleCleanup() {
+    await showToast({
+      style: Toast.Style.Animated,
+      title: "Cleaning up sessions…",
+    });
     try {
-      const parsed: SessionsResult = JSON.parse(data);
-      sessions = parsed.sessions ?? [];
-    } catch {
-      // ignore
+      await runCli(["sessions", "cleanup", "--no-color"]);
+      await showToast({
+        style: Toast.Style.Success,
+        title: "Sessions cleaned up",
+      });
+      await revalidate();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Cleanup failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   }
+
+  const actions = () => (
+    <ActionPanel>
+      <Action
+        title="Refresh"
+        icon={Icon.ArrowClockwise}
+        onAction={revalidate}
+        shortcut={{ modifiers: ["cmd"], key: "r" }}
+      />
+      <Action
+        title="Cleanup Sessions"
+        icon={Icon.Trash}
+        onAction={handleCleanup}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "d" }}
+      />
+    </ActionPanel>
+  );
 
   return (
     <List
       isLoading={isLoading}
       navigationTitle="OpenClaw Sessions"
-      actions={
-        <ActionPanel>
-          <Action title="Refresh" icon={Icon.ArrowClockwise} onAction={revalidate} shortcut={{ modifiers: ["cmd"], key: "r" }} />
-          <Action title="Cleanup Sessions" icon={Icon.Trash} onAction={handleCleanup} shortcut={{ modifiers: ["cmd", "shift"], key: "d" }} />
-        </ActionPanel>
-      }
+      actions={actions()}
     >
-      {error && <List.EmptyView icon={Icon.Warning} title="Failed to load sessions" description={error.message} />}
-      {sessions.map((session) => {
-        const pct = session.contextTokens > 0 ? Math.round((session.totalTokens / session.contextTokens) * 100) : 0;
-        return (
-          <List.Item
-            key={session.key}
-            title={formatSessionLabel(session.key)}
-            subtitle={formatAge(session.ageMs)}
-            accessories={[
-              {
-                tag: {
-                  value: `${session.totalTokens.toLocaleString()} / ${(session.contextTokens / 1000).toFixed(0)}k (${pct}%)`,
-                  color: tokenColor(pct),
+      {error ? (
+        <List.EmptyView
+          icon={Icon.Warning}
+          title="Failed to load sessions"
+          description={error.message}
+        />
+      ) : (
+        sessions.map((session) => {
+          const pct =
+            session.contextTokens !== null &&
+            session.contextTokens > 0 &&
+            session.totalTokens !== null
+              ? Math.round((session.totalTokens / session.contextTokens) * 100)
+              : null;
+          const tokens = session.totalTokens?.toLocaleString() ?? "?";
+          const capacity =
+            session.contextTokens === null
+              ? "?"
+              : `${(session.contextTokens / 1000).toFixed(0)}k`;
+          return (
+            <List.Item
+              key={session.key}
+              title={formatSessionLabel(session.key)}
+              subtitle={formatAge(session.ageMs)}
+              accessories={[
+                {
+                  tag: {
+                    value: `${tokens} / ${capacity}${pct === null ? "" : ` (${pct}%)`}`,
+                    color: tokenColor(pct),
+                  },
                 },
-              },
-              { text: session.model.replace("openrouter/", ""), icon: Icon.Cpu },
-            ]}
-            actions={
-              <ActionPanel>
-                <Action title="Refresh" icon={Icon.ArrowClockwise} onAction={revalidate} shortcut={{ modifiers: ["cmd"], key: "r" }} />
-                <Action title="Cleanup Sessions" icon={Icon.Trash} onAction={handleCleanup} shortcut={{ modifiers: ["cmd", "shift"], key: "d" }} />
-              </ActionPanel>
-            }
-          />
-        );
-      })}
+                {
+                  text: session.model.replace("openrouter/", ""),
+                  icon: Icon.ComputerChip,
+                },
+              ]}
+              actions={actions()}
+            />
+          );
+        })
+      )}
     </List>
   );
 }
