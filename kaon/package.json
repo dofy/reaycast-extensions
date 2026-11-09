@@ -1,0 +1,132 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "kaon",
+  "title": "Kaon Router",
+  "description": "Kaon Router spend against your daily budget, in the menu bar and as a usage breakdown",
+  "icon": "extension-icon.png",
+  "author": "dofy",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "balance",
+      "title": "Kaon Balance",
+      "description": "Show today's Kaon Router spend in the menu bar",
+      "mode": "menu-bar",
+      "interval": "5m"
+    },
+    {
+      "name": "usage",
+      "title": "Kaon Usage",
+      "description": "Budget, rate limits and the usage breakdown by model, key and provider",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "token",
+      "title": "Automation Token",
+      "description": "kaon_pat_* token with the usage:read scope. Leave empty to read Token File Path instead.",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "tokenPath",
+      "title": "Token File Path",
+      "description": "File holding the kaon_pat_* token, used when Automation Token is empty. Keep it at mode 600.",
+      "type": "textfield",
+      "default": "~/.config/kaon/token",
+      "required": false
+    },
+    {
+      "name": "baseURL",
+      "title": "Admin API Base URL",
+      "description": "Kaon Admin API root, without a trailing slash.",
+      "type": "textfield",
+      "default": "https://kaon-router-admin-api.kaonai.com/api/v1",
+      "required": false
+    },
+    {
+      "name": "titleFormat",
+      "title": "Menu Bar Title",
+      "description": "What the menu bar shows. The dropdown always carries the full numbers.",
+      "type": "dropdown",
+      "default": "spend",
+      "required": false,
+      "data": [
+        { "title": "Spend only ($46)", "value": "spend" },
+        { "title": "Spend, 2 decimals ($46.06)", "value": "spendExact" },
+        { "title": "Spend of budget ($46/$80)", "value": "spendBudget" },
+        { "title": "Percent of budget (58%)", "value": "percent" }
+      ]
+    },
+    {
+      "name": "warnRatio",
+      "title": "Warning Threshold",
+      "description": "Fraction of the daily budget that tints the menu bar icon yellow. Range: 0–1.",
+      "type": "textfield",
+      "default": "0.7",
+      "required": false
+    },
+    {
+      "name": "critRatio",
+      "title": "Critical Threshold",
+      "description": "Fraction of the daily budget that tints the menu bar icon red. Range: 0–1.",
+      "type": "textfield",
+      "default": "0.9",
+      "required": false
+    },
+    {
+      "name": "summaryRange",
+      "title": "Breakdown Range",
+      "description": "Range for the usage breakdown. 24h is broken upstream and returns one-minute buckets.",
+      "type": "dropdown",
+      "default": "7d",
+      "required": false,
+      "data": [
+        { "title": "7 days", "value": "7d" },
+        { "title": "30 days", "value": "30d" },
+        { "title": "1 hour", "value": "1h" },
+        { "title": "5 minutes", "value": "5m" },
+        { "title": "24 hours (broken upstream)", "value": "24h" }
+      ]
+    },
+    {
+      "name": "expiryWarnDays",
+      "title": "Token Expiry Warning",
+      "description": "Warn once the automation token is within this many days of expiry. Range: 0–365.",
+      "type": "textfield",
+      "default": "14",
+      "required": false
+    },
+    {
+      "name": "requestTimeoutSeconds",
+      "title": "Request Timeout (Seconds)",
+      "description": "Per-request timeout against the Admin API. Range: 1–120.",
+      "type": "textfield",
+      "default": "15",
+      "required": false
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.104.25",
+    "@raycast/utils": "^1.17.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^2.0.4",
+    "@types/node": "22.19.17",
+    "@types/react": "19.0.10",
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "prepublishOnly": "echo \"\\n\\nIt seems like you are trying to publish the Raycast extension to npm.\\n\\nIf you did intend to publish it to npm, remove the \\`prepublishOnly\\` script and rerun \\`npm publish\\` again.\\nIf you wanted to publish it to the Raycast Store instead, use \\`npm run publish\\` instead.\\n\\n\" && exit 1",
+    "publish": "npx @raycast/api@latest publish",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs"
+  },
+  "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
+}
