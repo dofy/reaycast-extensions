@@ -6,6 +6,10 @@
   "icon": "extension-icon.png",
   "author": "dofy",
   "license": "MIT",
+  "categories": [
+    "Developer Tools",
+    "Productivity"
+  ],
   "commands": [
     {
       "name": "balance",

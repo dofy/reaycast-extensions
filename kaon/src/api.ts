@@ -85,7 +85,14 @@ async function request<T>(
   fetchImpl: FetchLike,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), settings.requestTimeoutMs);
+  // The abort is indistinguishable from a dropped connection once it reaches
+  // the catch, so the reason is recorded here. Reporting a timeout as
+  // "network unreachable" hides the Request Timeout preference entirely.
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, settings.requestTimeoutMs);
   let response;
   try {
     response = await fetchImpl(`${settings.baseURL}${path}`, {
@@ -93,7 +100,12 @@ async function request<T>(
       signal: controller.signal,
     });
   } catch {
-    throw new ApiError({ message: "network unreachable", fatal: false });
+    throw new ApiError({
+      message: timedOut
+        ? `timed out after ${Math.round(settings.requestTimeoutMs / 1000)}s`
+        : "network unreachable",
+      fatal: false,
+    });
   } finally {
     clearTimeout(timer);
   }
