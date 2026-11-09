@@ -88,23 +88,34 @@ export async function refresh(
 ): Promise<Snapshot> {
   const now = options.nowMs ?? Date.now();
   if (prev.fatal) return prev;
-  if (!options.force && now < prev.nextFetch) return prev;
+
+  // A range change has to get past the fetch floor: the cached breakdown
+  // answers a different question now, and waiting out the floor would leave
+  // the views labelling the old window as the newly chosen one. Only the
+  // breakdown is refetched in that case — the budget counter does not depend
+  // on the range, so the floor still protects it.
+  const rangeChanged =
+    prev.summaryRange !== null && prev.summaryRange !== client.range;
+  const throttled = !options.force && now < prev.nextFetch;
+  if (throttled && !rangeChanged) return prev;
 
   const next: Snapshot = { ...prev };
 
-  try {
-    next.budget = await client.budget();
-    next.lastOK = now;
-    next.lastError = null;
-    next.failures = 0;
-    next.nextFetch = now + MIN_FETCH_INTERVAL_MS;
-  } catch (error) {
-    const failure = failureFrom(error);
-    next.failures = prev.failures + 1;
-    next.lastError = failure.message;
-    next.nextFetch = now + backoffMs(next.failures);
-    if (failure.fatal) next.fatal = failure.message;
-    return next;
+  if (!throttled) {
+    try {
+      next.budget = await client.budget();
+      next.lastOK = now;
+      next.lastError = null;
+      next.failures = 0;
+      next.nextFetch = now + MIN_FETCH_INTERVAL_MS;
+    } catch (error) {
+      const failure = failureFrom(error);
+      next.failures = prev.failures + 1;
+      next.lastError = failure.message;
+      next.nextFetch = now + backoffMs(next.failures);
+      if (failure.fatal) next.fatal = failure.message;
+      return next;
+    }
   }
 
   // A range change invalidates the breakdown on its own: the cached numbers
@@ -136,7 +147,7 @@ export async function refresh(
     next.expiryCheckedAt === null ||
     next.expiresAt <= now ||
     now - next.expiryCheckedAt > EXPIRY_TTL_MS;
-  if (options.force || expiryStale) {
+  if (options.force || (!throttled && expiryStale)) {
     try {
       const me = await client.authMe();
       next.expiresAt = parseExpiry(me.automation_token_expires_at);

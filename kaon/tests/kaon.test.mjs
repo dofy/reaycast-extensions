@@ -420,6 +420,53 @@ test("a range change refetches the breakdown even inside its TTL", async () => {
   assert.equal(next.summary.time_range, "30d");
 });
 
+test("a range change gets past the fetch floor, budget stays throttled", async () => {
+  const seven = stubClient();
+  const now = Date.parse("2026-11-09T08:00:00Z");
+  const first = await refresh(seven.client, EMPTY_SNAPSHOT, { nowMs: now });
+
+  const thirty = stubClient({
+    range: "30d",
+    summary: () => ({ ...SUMMARY, time_range: "30d" }),
+  });
+  const next = await refresh(thirty.client, first, { nowMs: now + 1000 });
+
+  assert.notEqual(next, first, "the pass is not swallowed by the floor");
+  assert.equal(next.summaryRange, "30d");
+  assert.equal(next.summary.time_range, "30d");
+  assert.equal(thirty.calls.summary, 1);
+  assert.equal(thirty.calls.budget, 0, "the budget ignores the range");
+  assert.equal(thirty.calls.authMe, 0);
+  assert.equal(next.nextFetch, first.nextFetch, "the floor is left standing");
+});
+
+test("an unchanged range inside the floor still short-circuits", async () => {
+  const { client, calls } = stubClient();
+  const now = Date.parse("2026-11-09T08:00:00Z");
+  const first = await refresh(client, EMPTY_SNAPSHOT, { nowMs: now });
+  const held = await refresh(client, first, { nowMs: now + 1000 });
+  assert.equal(held, first);
+  assert.deepEqual(calls, { budget: 1, summary: 1, authMe: 1 });
+});
+
+test("a timeout is reported as a timeout, not as an unreachable network", async () => {
+  const client = createClient(
+    "kaon_pat_secret",
+    { baseURL: "https://example.test", requestTimeoutMs: 1000, summaryRange: "7d" },
+    (url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () =>
+          reject(new Error("The operation was aborted")),
+        );
+      }),
+  );
+  await assert.rejects(client.budget(), (error) => {
+    assert.equal(error.message, "timed out after 1s");
+    assert.equal(error.fatal, false);
+    return true;
+  });
+});
+
 test("a failed force refetch keeps the last good breakdown", async () => {
   const { client } = stubClient();
   const now = Date.parse("2026-11-09T08:00:00Z");
