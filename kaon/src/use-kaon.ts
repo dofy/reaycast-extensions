@@ -3,7 +3,7 @@ import { getPreferenceValues } from "@raycast/api";
 import { createClient } from "./api.ts";
 import { normalizeSettings } from "./settings.ts";
 import type { KaonSettings, SettingsInput } from "./settings.ts";
-import { clearFatal, invalidateSummary, refresh } from "./state.ts";
+import { clearFatal, refresh } from "./state.ts";
 import type { Snapshot } from "./state.ts";
 import { loadSnapshot, saveSnapshot } from "./store.ts";
 import { resolveToken } from "./token.ts";
@@ -74,9 +74,9 @@ export function useKaon(): KaonState {
     settings,
     setupError,
     isLoading,
-    reload: (force = false) =>
-      run(force, force ? invalidateSummary : undefined),
-    retryAfterStop: () =>
-      run(true, (prev) => invalidateSummary(clearFatal(prev))),
+    // `force` already bypasses both the fetch floor and the breakdown TTL, so
+    // nothing is dropped up front: a failed refetch keeps the last good numbers.
+    reload: (force = false) => run(force),
+    retryAfterStop: () => run(true, clearFatal),
   };
 }
