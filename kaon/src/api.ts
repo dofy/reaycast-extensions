@@ -128,6 +128,7 @@ export function createClient(
   fetchImpl: FetchLike = globalThis.fetch as unknown as FetchLike,
 ) {
   return {
+    range: settings.summaryRange,
     /**
      * `/users/me/budget` is authoritative: it is the counter the console's own
      * /keys banner shows and the one that actually gates requests.

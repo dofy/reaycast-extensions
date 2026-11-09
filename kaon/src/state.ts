@@ -6,8 +6,16 @@ export interface Snapshot {
   summary: SummaryBody | null;
   /** Epoch ms of the last successful summary read. */
   summaryAt: number | null;
+  /**
+   * Range the cached breakdown was fetched with. The views label the cached
+   * numbers with this, not with the current preference, so a range change
+   * cannot relabel 7 days of usage as 30.
+   */
+  summaryRange: string | null;
   /** Automation token expiry, epoch ms. */
   expiresAt: number | null;
+  /** Epoch ms of the last `/auth/me` read, successful or not. */
+  expiryCheckedAt: number | null;
   /** Epoch ms of the last successful budget read. */
   lastOK: number | null;
   /** Human-readable and token-free. */
@@ -23,7 +31,9 @@ export const EMPTY_SNAPSHOT: Snapshot = {
   budget: null,
   summary: null,
   summaryAt: null,
+  summaryRange: null,
   expiresAt: null,
+  expiryCheckedAt: null,
   lastOK: null,
   lastError: null,
   fatal: null,
@@ -39,8 +49,15 @@ export const EMPTY_SNAPSHOT: Snapshot = {
 export const MIN_FETCH_INTERVAL_MS = 270_000;
 /** The breakdown is the heavier call, so it refreshes far less often. */
 export const SUMMARY_TTL_MS = 1_800_000;
+/**
+ * The token is read per launch and never cached, so a swapped token cannot be
+ * detected directly. Re-reading the expiry once a day picks up the new one.
+ */
+export const EXPIRY_TTL_MS = 86_400_000;
 
 export interface Client {
+  /** Range this client requests the breakdown with. */
+  range: string;
   budget: () => Promise<BudgetBody>;
   summary: () => Promise<SummaryBody>;
   authMe: () => Promise<{ automation_token_expires_at?: string }>;
@@ -90,12 +107,17 @@ export async function refresh(
     return next;
   }
 
+  // A range change invalidates the breakdown on its own: the cached numbers
+  // cover a different window, however fresh they are.
   const summaryStale =
-    next.summaryAt === null || now - next.summaryAt > SUMMARY_TTL_MS;
+    next.summaryAt === null ||
+    next.summaryRange !== client.range ||
+    now - next.summaryAt > SUMMARY_TTL_MS;
   if (options.force || summaryStale) {
     try {
       next.summary = await client.summary();
       next.summaryAt = now;
+      next.summaryRange = client.range;
     } catch (error) {
       const failure = failureFrom(error);
       next.lastError = failure.message;
@@ -106,14 +128,23 @@ export async function refresh(
     }
   }
 
-  // One extra call per token: a token that expires silently would otherwise
-  // kill the widget with nothing but a 401 to show for it.
-  if (next.expiresAt === null) {
+  // A token that expires silently would otherwise kill the widget with nothing
+  // but a 401 to show for it. An expiry already in the past is re-read at once:
+  // the token has most likely been replaced since.
+  const expiryStale =
+    next.expiresAt === null ||
+    next.expiryCheckedAt === null ||
+    next.expiresAt <= now ||
+    now - next.expiryCheckedAt > EXPIRY_TTL_MS;
+  if (options.force || expiryStale) {
     try {
       const me = await client.authMe();
       next.expiresAt = parseExpiry(me.automation_token_expires_at);
+      next.expiryCheckedAt = now;
     } catch (error) {
       const failure = failureFrom(error);
+      // Keep the stale expiry rather than dropping the warning entirely, but
+      // let the next pass try again.
       if (failure.fatal) next.fatal = failure.message;
     }
   }
@@ -121,11 +152,19 @@ export async function refresh(
   return next;
 }
 
+/**
+ * Clear the stop state so requests resume. The token expiry goes with it: a
+ * stop is normally cleared after replacing the token, and the old token's
+ * expiry would otherwise stick around as a false warning.
+ */
 export function clearFatal(prev: Snapshot): Snapshot {
-  return { ...prev, fatal: null, failures: 0, nextFetch: 0, lastError: null };
-}
-
-/** Drop the breakdown so the next pass refetches it. */
-export function invalidateSummary(prev: Snapshot): Snapshot {
-  return { ...prev, summary: null, summaryAt: null, nextFetch: 0 };
+  return {
+    ...prev,
+    fatal: null,
+    failures: 0,
+    nextFetch: 0,
+    lastError: null,
+    expiresAt: null,
+    expiryCheckedAt: null,
+  };
 }

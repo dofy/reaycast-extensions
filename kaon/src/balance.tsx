@@ -4,7 +4,7 @@ import {
   Keyboard,
   MenuBarExtra,
   open,
-  openCommandPreferences,
+  openExtensionPreferences,
 } from "@raycast/api";
 import {
   budgetLine,
@@ -31,7 +31,15 @@ function tintFor(severity: Severity): Color | undefined {
 export default function Command() {
   const { snapshot, settings, setupError, isLoading, reload, retryAfterStop } =
     useKaon();
-  const { budget, summary, fatal, lastError, lastOK, expiresAt } = snapshot;
+  const {
+    budget,
+    summary,
+    summaryRange: cachedRange,
+    fatal,
+    lastError,
+    lastOK,
+    expiresAt,
+  } = snapshot;
 
   const ratio = spendRatio(budget);
   const severity = severityFor(
@@ -68,7 +76,8 @@ export default function Command() {
     tooltip.push(lastError ?? "Kaon: 读取中");
   }
 
-  const range = summary?.time_range ?? settings?.summaryRange ?? "7d";
+  const range =
+    summary?.time_range ?? cachedRange ?? settings?.summaryRange ?? "7d";
   const totals = summary?.totals;
 
   const breakdown = (
@@ -210,7 +219,7 @@ export default function Command() {
         <MenuBarExtra.Item
           title="Configure Extension"
           icon={Icon.Gear}
-          onAction={() => void openCommandPreferences()}
+          onAction={() => void openExtensionPreferences()}
         />
       </MenuBarExtra.Section>
     </MenuBarExtra>

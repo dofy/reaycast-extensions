@@ -21,6 +21,7 @@ import {
 } from "../src/format.ts";
 import {
   EMPTY_SNAPSHOT,
+  EXPIRY_TTL_MS,
   MIN_FETCH_INTERVAL_MS,
   SUMMARY_TTL_MS,
   clearFatal,
@@ -56,6 +57,7 @@ const SUMMARY = {
 function stubClient(overrides = {}) {
   const calls = { budget: 0, summary: 0, authMe: 0 };
   const client = {
+    range: overrides.range ?? "7d",
     budget: async () => {
       calls.budget += 1;
       if (overrides.budget) return overrides.budget();
@@ -398,4 +400,115 @@ test("an unexpected throw is reported without a stack or a body", async () => {
   assert.equal(next.lastError, "unexpected failure");
   assert.equal(next.fatal, null);
   assert.equal(next.failures, 1);
+});
+
+test("a range change refetches the breakdown even inside its TTL", async () => {
+  const seven = stubClient();
+  const now = Date.parse("2026-11-09T08:00:00Z");
+  const first = await refresh(seven.client, EMPTY_SNAPSHOT, { nowMs: now });
+  assert.equal(first.summaryRange, "7d");
+
+  const thirty = stubClient({
+    range: "30d",
+    summary: () => ({ ...SUMMARY, time_range: "30d" }),
+  });
+  const next = await refresh(thirty.client, first, {
+    nowMs: now + MIN_FETCH_INTERVAL_MS + 1,
+  });
+  assert.equal(thirty.calls.summary, 1, "the cached range no longer applies");
+  assert.equal(next.summaryRange, "30d");
+  assert.equal(next.summary.time_range, "30d");
+});
+
+test("a failed force refetch keeps the last good breakdown", async () => {
+  const { client } = stubClient();
+  const now = Date.parse("2026-11-09T08:00:00Z");
+  const good = await refresh(client, EMPTY_SNAPSHOT, { nowMs: now });
+  assert.equal(good.summary.by_model.length, 2);
+
+  const failing = stubClient({
+    budget: () => {
+      throw new ApiError({ message: "network unreachable", fatal: false });
+    },
+  });
+  const after = await refresh(failing.client, good, {
+    nowMs: now + 1000,
+    force: true,
+  });
+  assert.equal(after.summary.by_model.length, 2, "the breakdown survives");
+  assert.equal(after.summaryRange, "7d");
+  assert.equal(after.budget.personal_daily_spend_usd, 46.06);
+  assert.equal(after.lastError, "network unreachable");
+});
+
+test("the token expiry is re-read daily, not once per install", async () => {
+  const { client, calls } = stubClient();
+  const now = Date.parse("2026-11-09T08:00:00Z");
+  const first = await refresh(client, EMPTY_SNAPSHOT, { nowMs: now });
+  assert.equal(calls.authMe, 1);
+  assert.equal(first.expiryCheckedAt, now);
+
+  await refresh(client, first, { nowMs: now + MIN_FETCH_INTERVAL_MS + 1 });
+  assert.equal(calls.authMe, 1, "no second read inside the day");
+
+  const rotated = stubClient({
+    authMe: () => ({ automation_token_expires_at: "2027-06-01T10:00:00" }),
+  });
+  const later = await refresh(rotated.client, first, {
+    nowMs: now + EXPIRY_TTL_MS + 1,
+  });
+  assert.equal(rotated.calls.authMe, 1);
+  assert.equal(later.expiresAt, Date.parse("2027-06-01T10:00:00Z"));
+});
+
+test("an expiry already in the past is re-read at once", async () => {
+  const now = Date.parse("2026-11-09T08:00:00Z");
+  const expired = {
+    ...EMPTY_SNAPSHOT,
+    expiresAt: Date.parse("2026-11-01T00:00:00Z"),
+    expiryCheckedAt: now - 1000,
+  };
+  const rotated = stubClient({
+    authMe: () => ({ automation_token_expires_at: "2027-01-01T00:00:00" }),
+  });
+  const next = await refresh(rotated.client, expired, { nowMs: now });
+  assert.equal(rotated.calls.authMe, 1);
+  assert.equal(next.expiresAt, Date.parse("2027-01-01T00:00:00Z"));
+});
+
+test("clearing the stop state also drops the old token's expiry", async () => {
+  const stopped = {
+    ...EMPTY_SNAPSHOT,
+    fatal: "401 token invalid or expired",
+    expiresAt: Date.parse("2026-11-01T00:00:00Z"),
+    expiryCheckedAt: Date.parse("2026-11-01T00:00:00Z"),
+  };
+  const cleared = clearFatal(stopped);
+  assert.equal(cleared.expiresAt, null);
+  assert.equal(cleared.expiryCheckedAt, null);
+
+  const { client, calls } = stubClient();
+  const next = await refresh(client, cleared, {
+    nowMs: Date.parse("2026-11-09T08:00:00Z"),
+  });
+  assert.equal(calls.authMe, 1, "the replacement token's expiry is read");
+  assert.equal(next.expiresAt, Date.parse("2026-12-01T10:00:00Z"));
+});
+
+test("a failed expiry read keeps the known expiry and retries later", async () => {
+  const { client } = stubClient();
+  const now = Date.parse("2026-11-09T08:00:00Z");
+  const first = await refresh(client, EMPTY_SNAPSHOT, { nowMs: now });
+
+  const broken = stubClient({
+    authMe: () => {
+      throw new ApiError({ message: "network unreachable", fatal: false });
+    },
+  });
+  const next = await refresh(broken.client, first, {
+    nowMs: now + EXPIRY_TTL_MS + 1,
+  });
+  assert.equal(next.expiresAt, first.expiresAt, "the warning is not lost");
+  assert.equal(next.expiryCheckedAt, first.expiryCheckedAt);
+  assert.equal(next.fatal, null);
 });

@@ -5,7 +5,7 @@ import {
   Icon,
   Keyboard,
   List,
-  openCommandPreferences,
+  openExtensionPreferences,
 } from "@raycast/api";
 import {
   clockTime,
@@ -137,7 +137,15 @@ function BreakdownSection({
 export default function Command() {
   const { snapshot, settings, setupError, isLoading, reload, retryAfterStop } =
     useKaon();
-  const { budget, summary, fatal, lastError, lastOK, expiresAt } = snapshot;
+  const {
+    budget,
+    summary,
+    summaryRange: cachedRange,
+    fatal,
+    lastError,
+    lastOK,
+    expiresAt,
+  } = snapshot;
 
   const ratio = spendRatio(budget);
   const severity = severityFor(
@@ -150,7 +158,8 @@ export default function Command() {
     settings?.expiryWarnDays ?? 14,
     Date.now(),
   );
-  const range = summary?.time_range ?? settings?.summaryRange ?? "7d";
+  const range =
+    summary?.time_range ?? cachedRange ?? settings?.summaryRange ?? "7d";
   const totals = summary?.totals;
   const blocked = fatal ?? setupError;
 
@@ -184,7 +193,7 @@ export default function Command() {
       <Action
         title="Configure Extension"
         icon={Icon.Gear}
-        onAction={() => void openCommandPreferences()}
+        onAction={() => void openExtensionPreferences()}
       />
     </ActionPanel>
   );
